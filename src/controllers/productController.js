@@ -1,4 +1,5 @@
 const Product = require('../models/Product');
+const { checkAndTriggerAlerts } = require('./alertController');
 
 const saveOrUpdateProduct = async (req, res) => {
   const { name, source, url, price, category, currency, imageUrl } = req.body;
@@ -7,9 +8,11 @@ const saveOrUpdateProduct = async (req, res) => {
     let product = await Product.findOne({ url });
 
     if (product) {
+
       product.prices.push({ value: price });
       product.updatedAt = Date.now();
       await product.save();
+      await checkAndTriggerAlerts(product._id, price);
       return res.json({ msg: 'Preço atualizado', product });
     }
 
