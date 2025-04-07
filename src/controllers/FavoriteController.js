@@ -17,7 +17,7 @@ const countFavorite = async (req, res) => {
         const user = await User.findById(userId);
         if (!user) return res.status(404).json({ msg: 'Utilizador não encontrado' });
 
-        const favoriteCount = await Favorite.countDocuments({ userId });
+        const favoriteCount = await Favorite.countDocuments({ userId, isActive: true });
         res.json({ count: favoriteCount });
     } catch (error) {
         res.status(500).json({ msg: 'Erro no servidor', error: error.message });
@@ -26,15 +26,15 @@ const countFavorite = async (req, res) => {
 
 const addFavorite = async (req, res) => {
     const userId = req.user.id;
-    const { productId, alerts } = req.body;
+    const { productId, offerId, alerts } = req.body;
 
     try {
         const user = await User.findById(userId);
         if (!user) return res.status(404).json({ msg: 'Utilizador não encontrado' });
 
-        const favoriteCount = await Favorite.countDocuments({ userId });
+        const favoriteCount = await Favorite.countDocuments({ userId, isActive: true });
         if (user.plan === 'freemium' && favoriteCount >= 5) {
-            return res.status(403).json({ msg: 'Limite de 5 favoritos atingido. Atualize para premium!' });
+            return res.status(403).json({ msg: 'Limite de 5 favorites atingido. Atualize para premium!' });
         }
 
         if (!alerts || !Array.isArray(alerts) || alerts.length === 0) {
@@ -57,14 +57,10 @@ const addFavorite = async (req, res) => {
             }
         }
 
-        const existingFavorite = await Favorite.findOne({ userId, productId });
-        if (existingFavorite) {
-            return res.status(400).json({ msg: 'Este produto já está nos seus favoritos' });
-        }
-
         const favorite = new Favorite({
             userId,
             productId,
+            offerId,
             alerts
         });
         await favorite.save();
@@ -79,8 +75,8 @@ const listFavorites = async (req, res) => {
     const userId = req.user.id;
 
     try {
-        const favorites = await Favorite.find({ userId })
-            .populate('productId', 'name source url prices');
+        const favorites = await Favorite.find({ userId, isActive: true })
+            .populate('productId', 'brand model memory color name offers');
 
         if (!favorites || favorites.length === 0) {
             return res.status(200).json({ msg: 'Nenhum favorito encontrado', favorites: [] });
@@ -97,13 +93,13 @@ const removeFavorite = async (req, res) => {
     const { id } = req.params;
 
     try {
-        const favorite = await Favorite.findOne({ _id: id, userId });
-        if (!favorite) {
-            return res.status(404).json({ msg: 'Favorito não encontrado' });
-        }
-
-        await Favorite.deleteOne({ _id: id, userId });
-        res.status(200).json({ msg: 'Favorito removido com sucesso' });
+        const favorite = await Favorite.findOneAndUpdate(
+            { _id: id, userId },
+            { isActive: false, updatedAt: Date.now() },
+            { new: true }
+        );
+        if (!favorite) return res.status(404).json({ msg: 'Favorito não encontrado' });
+        res.status(200).json({ msg: 'Favorito desativado', favorite });
     } catch (error) {
         res.status(500).json({ msg: 'Erro no servidor', error: error.message });
     }
@@ -119,9 +115,7 @@ const updateFavorite = async (req, res) => {
         if (!user) return res.status(404).json({ msg: 'Utilizador não encontrado' });
 
         const favorite = await Favorite.findOne({ _id: id, userId });
-        if (!favorite) {
-            return res.status(404).json({ msg: 'Favorito não encontrado' });
-        }
+        if (!favorite) return res.status(404).json({ msg: 'Favorito não encontrado' });
 
         if (!alerts || !Array.isArray(alerts) || alerts.length === 0) {
             return res.status(400).json({ msg: 'Pelo menos um alerta é necessário' });
@@ -143,10 +137,18 @@ const updateFavorite = async (req, res) => {
             }
         }
 
+        if (favorite.alerts.length > 0) {
+            favorite.alertsHistory.push({
+                alerts: favorite.alerts,
+                updatedAt: Date.now()
+            });
+        }
+
         favorite.alerts = alerts;
+        favorite.updatedAt = Date.now();
         await favorite.save();
 
-        res.status(200).json({ msg: 'Favorito atualizado com sucesso', favorite });
+        res.status(200).json({ msg: 'Favorito atualizado', favorite });
     } catch (error) {
         res.status(500).json({ msg: 'Erro no servidor', error: error.message });
     }

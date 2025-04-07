@@ -66,8 +66,60 @@ const deleteUser = async (req, res) => {
         res.status(500).json({ msg: 'Erro no servidor', error: error.message });
       }
 };
+
+const changePassword = async (req, res) => {
+  console.log('req.user:', req.user);
+  const userId = req.user.id;
+  const { password } = req.body;
+
+  try {
+      if (!password || password.length < 6) {
+          return res.status(400).json({ msg: 'A password deve ter pelo menos 6 caracteres' });
+      }
+
+      const user = await User.findById(userId);
+      if (!user) return res.status(404).json({ msg: 'Utilizador não encontrado' });
+
+      const salt = await bcrypt.genSalt(10);
+      user.password = await bcrypt.hash(password, salt);
+
+      await user.save();
+
+      res.status(200).json({ msg: 'Password alterada com sucesso!' });
+  } catch (error) {
+      res.status(500).json({ msg: 'Erro no servidor', error: error.message });
+  }
+};
+
+const updateUserPlan = async (req, res) => {
+  console.log('req.user:', req.user);
+  const userId = req.user.id;
+  const { plan } = req.body;
+
+  try {
+    if (!['freemium', 'premium'].includes(plan)) {
+      return res.status(400).json({ msg: 'Plano inválido. Use "freemium" ou "premium".' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ msg: 'Utilizador não encontrado' });
+
+    user.plan = plan;
+    await user.save();
+
+    res.json({ 
+      msg: 'Plano do utilizador atualizado com sucesso', 
+      user: { id: user._id, name: user.name, email: user.email, plan: user.plan } 
+    });
+  } catch (error) {
+    res.status(500).json({ msg: 'Erro no servidor', error: error.message });
+  }
+};
+
 module.exports= {
     registerUser,
     updateUser,
-    deleteUser
+    deleteUser,
+    changePassword,
+    updateUserPlan
 };

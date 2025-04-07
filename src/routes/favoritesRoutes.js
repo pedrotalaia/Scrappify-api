@@ -1,7 +1,7 @@
 const express = require('express');
 const auth = require('../middleware/auth');
 const { countFavorite, addFavorite, listFavorites, removeFavorite, updateFavorite } = require('../controllers/FavoriteController');
-const { getUserNotifications, markNotificationRead } = require('../controllers/alertController');
+const { getUserNotifications, /*markNotificationRead */} = require('../controllers/alertController');
 
 const router = express.Router();
 
@@ -13,7 +13,7 @@ router.put('/:id', auth, updateFavorite);
 
 //NOTIFICAÇOES
 router.get('/notifications', auth, getUserNotifications);
-router.put('/notifications/:id/mark-read', auth, markNotificationRead);
+//router.put('/notifications/:id/mark-read', auth, markNotificationRead);
 
 
 module.exports = router;
