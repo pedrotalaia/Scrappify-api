@@ -68,7 +68,6 @@ const deleteUser = async (req, res) => {
 };
 
 const changePassword = async (req, res) => {
-  console.log('req.user:', req.user);
   const userId = req.user.id;
   const { password } = req.body;
 
@@ -92,7 +91,6 @@ const changePassword = async (req, res) => {
 };
 
 const updateUserPlan = async (req, res) => {
-  console.log('req.user:', req.user);
   const userId = req.user.id;
   const { plan } = req.body;
 
