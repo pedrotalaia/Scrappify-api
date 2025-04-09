@@ -1,8 +1,15 @@
 const Product = require('../models/Product');
 const { checkAndTriggerAlerts } = require('./alertController');
 
+const normalizeUrl = (url) => {
+    const urlObj = new URL(url);
+    return `${urlObj.origin}${urlObj.pathname}`;
+};
+
 const saveOrUpdateProduct = async (req, res) => {
     try {
+        const { price } = req.body;
+        if (!price || isNaN(price) || price <= 0) throw new Error('Preço inválido');
         const product = await saveProduct(req.body);
         res.status(product.updatedAt ? 200 : 201).json({
             msg: product.updatedAt ? 'Produto atualizado' : 'Produto criado',
@@ -15,11 +22,12 @@ const saveOrUpdateProduct = async (req, res) => {
 
 const saveProduct = async (productData) => {
     const { name, source, url, price, brand, model, memory, color, category, currency, imageUrl } = productData;
-    let product = await Product.findOne({ name: { $regex: name, $options: 'i' } });
-    const newOffer = { source, url, prices: [{ value: price, date: Date.now() }], lastUpdated: Date.now() };
+    const normalizedUrl = normalizeUrl(url);
+    let product = await Product.findOne({ brand, model, memory, color });
+    const newOffer = { source, url: normalizedUrl, prices: [{ value: price, date: Date.now() }], lastUpdated: Date.now() };
 
     if (product) {
-        const offerIndex = product.offers.findIndex(o => o.url === url);
+        const offerIndex = product.offers.findIndex(o => o.url === normalizedUrl);
         if (offerIndex >= 0) {
             product.offers[offerIndex].prices.push({ value: price, date: Date.now() });
             product.offers[offerIndex].lastUpdated = Date.now();
@@ -60,9 +68,7 @@ const deleteProduct = async (req, res) => {
 const countTotalProducts = async (req, res) => {
     try {
         const countTotal = await Product.countDocuments();
-
         res.json({ count: countTotal });
-    
     } catch (error) {
         res.status(500).json({ msg: 'Erro no servidor', error: error.message });
     }
@@ -75,8 +81,27 @@ const searchProduct = async (req, res) => {
     }
 
     try {
-        const existingProduct = await Product.findOne({ name: { $regex: query, $options: 'i' } });
+        const existingProduct = await Product.findOne({ model: { $regex: query, $options: 'i' } });
         const savedProducts = [];
+
+        const saveScrapedProduct = async (result) => {
+            const product = await saveProduct({
+                name: result.name,
+                source: result.offers[0].source,
+                url: result.offers[0].url,
+                price: result.offers[0].prices[0].value,
+                brand: result.brand || 'Desconhecido',
+                model: result.model || query,
+                memory: result.memory || '',
+                color: result.color || '',
+                category: result.category || '',
+                imageUrl: result.imageUrl || ''
+            });
+            if (!savedProducts.some(p => p._id.equals(product._id))) {
+                savedProducts.push(product);
+            }
+            return product;
+        };
 
         if (existingProduct) {
             const existingStores = existingProduct.offers.map(offer => offer.source);
@@ -89,44 +114,18 @@ const searchProduct = async (req, res) => {
 
             const results = await scrapeProductPriceByQuery(query, storesToScrape);
             for (const result of results) {
-                const product = await saveProduct({
-                    name: query,
-                    source: result.source,
-                    url: result.url,
-                    price: result.price,
-                    brand: result.brand || 'Desconhecido',
-                    model: result.model || query,
-                    memory: result.memory || '',
-                    color: result.color || '',
-                    category: result.category || '',
-                    imageUrl: result.imageUrl || ''
-                });
-                if (!savedProducts.some(p => p._id.equals(product._id))) {
-                    savedProducts.push(product);
-                }
+                await saveScrapedProduct(result);
             }
         } else {
             const results = await scrapeProductPriceByQuery(query, stores);
             if (results.length === 0) return res.status(404).json({ msg: 'Nenhum preço encontrado' });
 
             for (const result of results) {
-                const product = await saveProduct({
-                    name: query,
-                    source: result.source,
-                    url: result.url,
-                    price: result.price,
-                    brand: result.brand || 'Desconhecido',
-                    model: result.model || query,
-                    memory: result.memory || '',
-                    color: result.color || '',
-                    category: result.category || '',
-                    imageUrl: result.imageUrl || ''
-                });
-                savedProducts.push(product);
+                await saveScrapedProduct(result);
             }
         }
 
-        res.json({ msg: 'Produtos encontrados e salvos', products: savedProducts });
+        res.json({ msg: 'Produtos encontrados e guardados.', products: savedProducts });
     } catch (error) {
         res.status(500).json({ msg: 'Erro ao pesquisar produto', error: error.message });
     }
@@ -136,5 +135,6 @@ module.exports = {
     saveOrUpdateProduct, 
     deleteProduct,
     countTotalProducts,
-    searchProduct
- };
+    searchProduct,
+    saveProduct
+};

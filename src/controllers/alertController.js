@@ -1,6 +1,8 @@
 const Favorite = require('../models/Favorite');
 const Notification = require('../models/Notification');
 const Product = require('../models/Product');
+const User = require('../models/Users');
+const messaging = require('../config/firebaseConfig');
 
 const checkAndTriggerAlerts = async (productId, newPrice) => {
     try {
@@ -94,6 +96,24 @@ const checkAndTriggerAlerts = async (productId, newPrice) => {
                         read: false
                     });
                     await notification.save();
+
+                    const user = await User.findById(userId);
+                    if(user && user.device_tokens.length > 0){
+                        const tokens = user.device_tokens.map(dt => dt.token);
+                        
+                        const payload = {
+                            notification:{
+                            title: 'Atualização de Produto',
+                            body: message,
+                        },
+                        tokens,
+                        };
+                        try{
+                            await messaging.sendEachForMulticast(payload);
+                        }catch (fcmError) {
+                            console.error('Erro ao enviar notificação push:', fcmError.message);
+                        }
+                    }
                 }
             }
         }

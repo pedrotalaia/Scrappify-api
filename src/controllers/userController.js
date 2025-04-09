@@ -8,7 +8,7 @@ const registerUser = async (req, res) => {
     try{
         let user = await User.findOne({email});
         
-        if(user) return res.status(400).json({ msg: 'Email já registrado' });
+        if(user) return res.status(400).json({ msg: 'Email já registado' });
 
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
@@ -21,7 +21,7 @@ const registerUser = async (req, res) => {
 
         await user.save();
         res.status(201).json({ 
-            msg: 'Utilizador registrado com sucesso.', 
+            msg: 'Utilizador registado com sucesso.', 
             user: { id: user._id, name, email, plan: user.plan } 
           });
     }catch (error) {
@@ -96,7 +96,7 @@ const updateUserPlan = async (req, res) => {
 
   try {
     if (!['freemium', 'premium'].includes(plan)) {
-      return res.status(400).json({ msg: 'Plano inválido. Use "freemium" ou "premium".' });
+      return res.status(400).json({ msg: 'Plano inválido. Usa "freemium" ou "premium".' });
     }
 
     const user = await User.findById(userId);
@@ -114,10 +114,33 @@ const updateUserPlan = async (req, res) => {
   }
 };
 
+const registerToken = async (req, res) => {
+  const userId = req.user.id;
+  const { token, platform, device_id } = req.body
+
+  try{
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ msg: 'Utilizador não encontrado' });
+
+    const existingToken = user.device_tokens.find(dt => dt.token === token)
+    if(!existingToken){
+        user.device_tokens.push({userId, token, platform, device_id })
+    }else{
+      existingToken.last_updated = Date.now();
+    }
+    
+    await user.save();
+    res.status(200).json({ message: 'Token registado com sucesso' });
+    } catch (error) {
+      res.status(500).json({ error: 'Erro ao registar o token', details: error.message });
+    }
+};
+
 module.exports= {
     registerUser,
     updateUser,
     deleteUser,
     changePassword,
-    updateUserPlan
+    updateUserPlan,
+    registerToken
 };
