@@ -172,11 +172,9 @@ const scrapeAmazonQuery = async (query) => {
 
             let color = null;
             if (colorOptions.length === 0) {
-                // Para produtos sem variações, buscar na tabela de características
                 try {
                     color = normalizeColor(await page.$eval('tr.po-color td.a-span9 span', el => el.innerText.trim()));
                 } catch (e) {
-                    // Se a tabela não estiver disponível, tentar regex no título
                     const colorMatch = titleLower.match(/(white|black|blue|pink|green|yellow|starlight|midnight|multicolor)/i);
                     color = colorMatch ? normalizeColor(colorMatch[0]) : null;
                 }

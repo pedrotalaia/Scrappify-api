@@ -1,7 +1,6 @@
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 puppeteer.use(StealthPlugin());
-const { saveProduct } = require('../controllers/productController');
 const { scrapeAmazonQuery } = require('./amazon');
 const { normalizeUrl } = require('./normalize');
 
@@ -24,8 +23,7 @@ const scrapeProductPriceByQuery = async (query, stores) => {
                 currency: result.currency,
                 imageUrl: result.imageUrl
             };
-            const savedProduct = await saveProduct(productData);
-            results.push(savedProduct);
+            results.push(productData);
         }
     }
     if (stores.includes('Fnac')) {
@@ -45,8 +43,7 @@ const scrapeProductPriceByQuery = async (query, stores) => {
                 currency: result.currency,
                 imageUrl: result.imageUrl
             };
-            const savedProduct = await saveProduct(productData);
-            results.push(savedProduct);
+            results.push(productData);
         }
     }
     if (stores.includes('Worten')) {
@@ -66,8 +63,7 @@ const scrapeProductPriceByQuery = async (query, stores) => {
                 currency: result.currency,
                 imageUrl: result.imageUrl
             };
-            const savedProduct = await saveProduct(productData);
-            results.push(savedProduct);
+            results.push(productData);
         }
     }
     return results;

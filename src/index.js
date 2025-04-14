@@ -5,7 +5,6 @@ const passport = require('./config/passport');
 const routes = require('./routes');
 const cors = require('cors');
 const admin = require('firebase-admin');
-const { scrapeProductPriceByQuery } = require('./scrapper');
 
 dotenv.config();
 
