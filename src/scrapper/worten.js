@@ -175,7 +175,8 @@ const collectProducts = async (page, query, maxProducts, currentCount) => {
             const brand = productDetails.specs['Marca'] || 'Unknown';
             const model = productDetails.specs['Modelo'] || 'Unknown';
             const memory = normalizeMemory(productDetails.specs['Memoria interna'] || 'Unknown');
-            const color = normalizeColor(productDetails.specs['Color'] || 'Unknown');
+            const rawColor = productDetails.specs['Color'] || 'Unknown';
+            const color = await normalizeColor(rawColor);
             const name = normalizeTitle(brand, model, memory, color);
             const priceValue = parsePrice(item.price);
 

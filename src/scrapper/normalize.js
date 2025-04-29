@@ -1,23 +1,15 @@
-const colorMap = {
-    'negro': 'black',
-    'preto': 'black',
-    'azul': 'blue',
-    'rosa': 'pink',
-    'verde': 'green',
-    'amarelo': 'yellow',
-    'amarillo': 'yellow',
-    'blanco': 'white',
-    'branco': 'white',
-    'blanco estrella': 'starlight',
-    'medianoche': 'midnight',
-    'multicolor': 'white',
-    'titánio natural': 'natural titanium'
-};
+const translate = require('google-translate-api-x');
 
-const normalizeColor = (color) => {
+const normalizeColor = async (color) => {
     if (!color) return null;
     const lowerColor = color.toLowerCase().trim().replace(/^en\s+/i, '');
-    return colorMap[lowerColor] || lowerColor;
+    try {
+        const translation = await translate(lowerColor, { from: 'auto', to: 'en' });
+        return translation.text.toLowerCase().trim();
+    } catch (error) {
+        console.error('Error translating color:', error);
+        return lowerColor;
+    }
 };
 
 const normalizeMemory = (memory) => {
