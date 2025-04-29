@@ -78,7 +78,8 @@ const scrapeAmazonQuery = async (query) => {
                     await colorElement.click();
                     await delay(3000);
 
-                    const color = normalizeColor(await safeEval(page, `#color_name_${colorIndex} img.swatch-image`, el => el.alt.trim(), ''));
+                    const rawColor = await safeEval(page, `#color_name_${colorIndex} img.swatch-image`, el => el.alt.trim(), '');
+                    const color = await normalizeColor(rawColor);
 
                     const memoryOptions = await page.$$('[id^="size_name_"].text-swatch-button-with-slots');
                     for (let memoryIndex = 0; memoryIndex < memoryOptions.length; memoryIndex++) {
@@ -128,10 +129,12 @@ const scrapeAmazonQuery = async (query) => {
 
             let color = null;
             if (colorOptions.length === 0) {
-                color = normalizeColor(await safeEval(page, 'tr.po-color td.a-span9 span', el => el.innerText.trim(), ''));
-                if (!color) {
+                const rawColor = await safeEval(page, 'tr.po-color td.a-span9 span', el => el.innerText.trim(), '');
+                if (rawColor) {
+                    color = await normalizeColor(rawColor);
+                } else {
                     const colorMatch = titleLower.match(/(white|black|blue|pink|green|yellow|starlight|midnight|multicolor)/i);
-                    color = colorMatch ? normalizeColor(colorMatch[0]) : null;
+                    color = colorMatch ? await normalizeColor(colorMatch[0]) : null;
                 }
             }
 
@@ -149,7 +152,9 @@ const scrapeAmazonQuery = async (query) => {
 
         for (const variation of uniqueVariations) {
             const brand = variation.title.split(' ')[0];
-            const model = query;
+           
+
+ const model = query;
             const priceValue = variation.price;
 
             if (!brand || !model || !priceValue || priceValue <= 0) continue;

@@ -5,7 +5,6 @@ const passport = require('./config/passport');
 const routes = require('./routes');
 const cors = require('cors');
 const admin = require('firebase-admin');
-const {scrapeWortenQuery} = require('./scrapper/worten');
 
 dotenv.config();
 
@@ -26,8 +25,6 @@ if (admin.apps.length > 0) {
   console.error('Erro: Firebase Admin SDK não foi inicializado');
   process.exit(1);
 }
-
-scrapeWortenQuery('Iphone 15 Verde');
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Servidor rodando na porta ${PORT}`));
