@@ -10,7 +10,8 @@ const colorMap = {
     'branco': 'white',
     'blanco estrella': 'starlight',
     'medianoche': 'midnight',
-    'multicolor': 'white'
+    'multicolor': 'white',
+    'titánio natural': 'natural titanium'
 };
 
 const normalizeColor = (color) => {

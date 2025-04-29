@@ -17,6 +17,8 @@ const userSchema = new mongoose.Schema({
   plan: { type: String, enum: ['freemium', 'premium'], default: 'freemium' },
   device_tokens: [UserDevice_TokensSchema],
   isEmailVerified: { type: Boolean, default: false },
+  profilePicture: { type: String },
+  profilePictureKey: { type: String },
   createdAt: { type: Date, default: Date.now }
 });
 

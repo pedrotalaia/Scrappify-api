@@ -133,10 +133,26 @@ const searchProduct = async (req, res) => {
     }
 };
 
+const ProductInfo = async (req, res) => {
+    const productId = req.params.id;
+
+    try {
+        const product = await Product.findById(productId);
+        if (!product) {
+            return res.status(404).json({ msg: 'Produto não encontrado' });
+        }
+
+        return res.json({ product });
+    } catch (err) {
+        return res.status(500).json({ msg: 'Erro ao obter informação do produto', error: err.message });
+    }
+};
+
 module.exports = { 
     saveOrUpdateProduct, 
     deleteProduct,
     countTotalProducts,
     searchProduct,
-    saveProduct
+    saveProduct,
+    ProductInfo
 };

@@ -1,5 +1,11 @@
 const bcrypt = require('bcryptjs');
 const User = require('../models/Users');
+const axios = require('axios');
+const multer = require('multer');
+const FormData = require('form-data');
+
+const storage = multer.memoryStorage();
+const upload = multer({ storage: storage });
 
 const registerUser = async (req, res) => {
 
@@ -136,11 +142,65 @@ const registerToken = async (req, res) => {
     }
 };
 
+const updateProfilePicture = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const file = req.file;
+
+
+    if (!file) {
+      return res.status(400).json({ error: 'Fotografia é obrigatória!' });
+    }
+    const filetypes = /jpeg|jpg|png/;
+    if (!filetypes.test(file.mimetype)) {
+      return res.status(400).json({ error: 'Apenas imagens JPEG ou PNG são permitidas' });
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      return res.status(400).json({ error: 'O arquivo deve ter no máximo 10MB' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ msg: 'Utilizador não encontrado' })
+
+    const formData = new FormData();
+    formData.append('feature', 'profile_picture');
+    formData.append('relationId', userId);
+    formData.append('file', file.buffer, {
+      filename: file.originalname,
+      contentType: file.mimetype,
+    });
+
+    const response = await axios.post('https://aws-s3-wolf-service.vercel.app/api/aws/save', formData, {
+      headers: {
+        ...formData.getHeaders(),
+        Authorization: `Basic ${Buffer.from('scrapify:Viana@2025').toString('base64')}`,
+      },
+    });
+
+    const imageUrl = response.data.url;
+    const imageKey = response.data.key; 
+
+    user.profilePicture = imageUrl;
+    user.profilePictureKey = imageKey;
+    await user.save();
+
+    res.status(200).json({
+      message: 'Foto de perfil atualizada com sucesso',
+      user: { id: user._id, name: user.name, email: user.email, profilePicture: user.profilePicture },
+    });
+  } catch (error) {
+    console.error('Erro ao atualizar foto de perfil:', error.message);
+    res.status(500).json({ error: 'Erro ao atualizar foto de perfil', details: error.message });
+  }
+};
+
 module.exports= {
     registerUser,
     updateUser,
     deleteUser,
     changePassword,
     updateUserPlan,
-    registerToken
+    registerToken,
+    updateProfilePicture, 
+    upload
 };
