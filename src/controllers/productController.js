@@ -1,22 +1,36 @@
 const Product = require('../models/Product');
 const { checkAndTriggerAlerts } = require('./alertController');
-const { normalizeUrl } = require('../scrapper/normalize');
+const { normalizeUrl, extractColorFromQuery } = require('../scrapper/normalize');
 const { scrapeProductPriceByQuery } = require('../scrapper/index');
 
 const saveProduct = async (productData) => {
     const { name, source, url, price, brand, model, memory, color, category, currency, imageUrl } = productData;
     const normalizedUrl = normalizeUrl(url);
-    let product = await Product.findOne({ brand, model, memory, color });
-    const newOffer = { source, url: normalizedUrl, prices: [{ value: price, date: Date.now() }], lastUpdated: Date.now() };
+
+    let product = await Product.findOne(
+        { brand, model, memory, color }
+    ).collation({ locale: 'en', strength: 2 });
+
+    const newOffer = {
+        source,
+        url: normalizedUrl,
+        prices: [{ value: price, date: Date.now() }],
+        lastUpdated: Date.now()
+    };
 
     if (product) {
-        const offerIndex = product.offers.findIndex(o => o.url === normalizedUrl);
+        const offerIndex = product.offers.findIndex(o => o.source === source);
+
         if (offerIndex >= 0) {
+            if (product.offers[offerIndex].url !== normalizedUrl) {
+                product.offers[offerIndex].url = normalizedUrl;
+            }
             product.offers[offerIndex].prices.push({ value: price, date: Date.now() });
             product.offers[offerIndex].lastUpdated = Date.now();
         } else {
             product.offers.push(newOffer);
         }
+
         product.updatedAt = Date.now();
     } else {
         product = new Product({
@@ -31,6 +45,7 @@ const saveProduct = async (productData) => {
             imageUrl
         });
     }
+
     await product.save();
     await checkAndTriggerAlerts(product._id, price);
     return product;
@@ -76,36 +91,47 @@ const searchProduct = async (req, res) => {
     const { query, stores } = req.body;
 
     if (!query || !stores || !Array.isArray(stores)) {
-        return res.status(400).json({ msg: 'Query e stores são obrigatórios' });
+        return res.status(400).json({ msg: 'Query and stores are required' });
     }
 
     if (userPlan === 'freemium' && stores.length > 1) {
-        return res.status(400).json({ msg: 'Só podes escolher 1 loja devido ao teu plano Free' });
+        return res.status(400).json({ msg: 'Freemium plan allows only one store' });
     }
 
     try {
-        const normalizedQuery = query.trim().toLowerCase();
+        let normalizedQuery = query.trim().toLowerCase();
 
-        const existingProducts = await Product.find({
-            model: { $regex: normalizedQuery, $options: 'i' }
-        });
+        const searchTerms = normalizedQuery.split(' ').filter(Boolean);
+        const regexQueries = searchTerms.map(term => ({
+            $or: [
+                { model: { $regex: term, $options: 'i' } },
+                { name: { $regex: term, $options: 'i' } },
+                { color: { $regex: term, $options: 'i' } },
+                { brand: { $regex: term, $options: 'i' } }
+            ]
+        }));
 
+        const allProducts = await Product.find({ $and: regexQueries });
+
+        const existingProducts = [];
         const storesToScrape = new Set(stores);
-        if (existingProducts.length > 0) {
-            for (const product of existingProducts) {
-                for (const offer of product.offers) {
+
+        for (const product of allProducts) {
+            let productHasAnyRequestedStore = false;
+            for (const offer of product.offers) {
+                if (stores.includes(offer.source)) {
                     storesToScrape.delete(offer.source);
+                    productHasAnyRequestedStore = true;
                 }
             }
-            if (storesToScrape.size === 0) {
-                return res.json({
-                    msg: 'Produtos encontrados na base de dados',
-                    products: existingProducts
-                });
+            if (productHasAnyRequestedStore) {
+                existingProducts.push(product);
             }
         }
 
-        const scrapedResults = await scrapeProductPriceByQuery(query, Array.from(storesToScrape.size > 0 ? storesToScrape : stores));
+        const scrapedResults = storesToScrape.size > 0
+            ? await scrapeProductPriceByQuery(normalizedQuery, Array.from(storesToScrape))
+            : [];
 
         const savedResults = [];
         for (const result of scrapedResults) {
@@ -114,7 +140,7 @@ const searchProduct = async (req, res) => {
         }
 
         if (savedResults.length === 0 && existingProducts.length === 0) {
-            return res.status(404).json({ msg: 'Nenhum produto encontrado' });
+            return res.status(404).json({ msg: 'No products found' });
         }
 
         const finalProducts = [
@@ -123,13 +149,13 @@ const searchProduct = async (req, res) => {
         ];
 
         return res.json({
-            msg: 'Produtos encontrados',
+            msg: 'Products found',
             products: finalProducts
         });
 
     } catch (error) {
-        console.error('Erro ao pesquisar produto:', error);
-        return res.status(500).json({ msg: 'Erro ao pesquisar produto', error: error.message });
+        console.error('[ERROR] searchProduct:', error.message);
+        return res.status(500).json({ msg: 'Error searching product', error: error.message });
     }
 };
 
@@ -148,11 +174,51 @@ const ProductInfo = async (req, res) => {
     }
 };
 
-module.exports = { 
-    saveOrUpdateProduct, 
+const getProductsWithoutCategory = async (req, res) => {
+    try {
+        const products = await Product.find({ category: { $in: [null, ''] } });
+        res.json(products);
+    } catch (err) {
+        res.status(500).json({ msg: 'Erro ao obter produtos sem categoria', error: err.message });
+    }
+};
+
+const getProductsByCategory = async (req, res) => {
+    const { category } = req.params;
+    try {
+        const products = await Product.find({ category });
+        res.json(products);
+    } catch (err) {
+        res.status(500).json({ msg: 'Erro ao obter produtos da categoria', error: err.message });
+    }
+};
+
+const assignCategoryToProducts = async (req, res) => {
+    const { productIds, category } = req.body;
+
+    if (!Array.isArray(productIds) || !category) {
+        return res.status(400).json({ msg: 'IDs dos produtos e categoria são obrigatórios' });
+    }
+
+    try {co
+        const result = await Product.updateMany(
+            { _id: { $in: productIds } },
+            { $set: { category, updatedAt: Date.now() } }
+        );
+        res.json({ msg: 'Categoria atribuída com sucesso', modifiedCount: result.modifiedCount });
+    } catch (err) {
+        res.status(500).json({ msg: 'Erro ao atualizar os produtos', error: err.message });
+    }
+};
+
+module.exports = {
+    saveOrUpdateProduct,
     deleteProduct,
     countTotalProducts,
     searchProduct,
     saveProduct,
-    ProductInfo
+    ProductInfo,
+    getProductsWithoutCategory,
+    getProductsByCategory,
+    assignCategoryToProducts
 };
