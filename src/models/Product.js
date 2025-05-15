@@ -7,7 +7,7 @@ const ProductPriceSchema = new Schema({
 });
 
 const ProductOfferSchema = new Schema({
-    source: { type: String, required: true }, 
+    source: { type: String, required: true },
     url: { type: String, required: true },
     prices: [ProductPriceSchema],
     lastUpdated: { type: Date, default: Date.now }
@@ -15,9 +15,9 @@ const ProductOfferSchema = new Schema({
 
 const ProductSchema = new Schema({
     brand: { type: String, required: true },
-    model: { type: String, required: true, index: true }, 
+    model: { type: String, required: true, index: true },
     memory: { type: String },
-    color: { type: String }, 
+    color: { type: String },
     name: { type: String, required: true },
     category: { type: String },
     currency: { type: String, default: 'EUR' },
@@ -27,6 +27,12 @@ const ProductSchema = new Schema({
     updatedAt: { type: Date, default: Date.now }
 });
 
-ProductSchema.index({ brand: 1, model: 1, memory: 1, color: 1 }, { unique: true });
+ProductSchema.index(
+    { brand: 1, model: 1, memory: 1, color: 1 },
+    {
+        unique: true,
+        collation: { locale: 'en', strength: 2 }
+    }
+);
 
 module.exports = mongoose.model('Product', ProductSchema);

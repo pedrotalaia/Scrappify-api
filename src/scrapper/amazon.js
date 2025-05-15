@@ -1,5 +1,56 @@
+// FUSÃO COMPLETA: variações + po-* + fallback inteligente
 const { getBrowser, getRandomUserAgent, acceptCookies, parsePrice, safeEval, delay, dedupeVariations } = require('./utils');
-const { normalizeColor, normalizeMemory, normalizeTitle } = require('./normalize');
+const { normalizeMemory, normalizeColor, extractColorFromQuery, normalizeTitle, normalizeUrl } = require('./normalize');
+
+const removeTitleRepetitions = (title) => {
+    const words = title.split(' ');
+    const result = [];
+    const seen = new Set();
+    for (const word of words) {
+        const key = word.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        result.push(word);
+    }
+    return result.join(' ');
+};
+
+const cleanModel = (rawModel) => {
+    return rawModel
+        .replace(/\s+/g, ' ')
+        .replace(/[\-–,]/g, ' ')
+        .replace(/\([^)]*\)/g, '')
+        .trim()
+        .split(' ')
+        .slice(0, 6)
+        .join(' ')
+        .trim();
+};
+
+const matchesModelInQuery = (model, query) => {
+    const match = query.match(/\b(\d{2})\b/);
+    if (!match) return true;
+    const number = match[1];
+    if (!model) return false;
+    return model.includes(number);
+};
+
+const extractPoData = async (page) => {
+    return await page.evaluate(() => {
+        const data = {};
+        const map = {
+            model_name: '.po-model_name .po-break-word',
+            color: '.po-color .po-break-word',
+            memory: '.po-memory_storage_capacity .po-break-word',
+            brand: '.po-brand .po-break-word'
+        };
+        for (const [key, selector] of Object.entries(map)) {
+            const el = document.querySelector(selector);
+            if (el) data[key] = el.innerText.trim();
+        }
+        return data;
+    });
+};
 
 const scrapeAmazonQuery = async (query) => {
     const browser = await getBrowser();
@@ -7,20 +58,20 @@ const scrapeAmazonQuery = async (query) => {
 
     try {
         await page.setUserAgent(getRandomUserAgent());
+        await page.setExtraHTTPHeaders({ 'Accept-Language': 'es-ES,es;q=0.9' });
         await page.setDefaultNavigationTimeout(60000);
 
+        const queryColor = extractColorFromQuery(query);
         const searchUrl = `https://www.amazon.es/s?k=${encodeURIComponent(query)}`;
         await page.goto(searchUrl, { waitUntil: 'networkidle2' });
-
         await acceptCookies(page, '#sp-cc-accept');
-
         await page.waitForSelector('#search .s-result-item', { timeout: 10000 });
 
-        const refurbishedKeywords = ['reacondicionado', 'renovado', 'usado', 'segunda mano', 'refurbished'];
+        const refurbishedKeywords = ['refurbished', 'renewed', 'used', 'second hand', 'reacondicionado', 'renovado', 'usado', 'segunda mano'];
 
         const productFromSearch = await page.evaluate((query, refurbishedKeywords) => {
             const items = Array.from(document.querySelectorAll('#search .s-result-item'));
-            const queryLower = query.toLowerCase();
+            const queryTerms = query.toLowerCase().split(/\s+/);
             let bestMatch = null;
             let bestScore = -1;
 
@@ -28,34 +79,33 @@ const scrapeAmazonQuery = async (query) => {
                 const titleElement = item.querySelector('.a-link-normal .a-text-normal');
                 const priceElement = item.querySelector('.a-price .a-offscreen');
                 const linkElement = item.querySelector('.a-link-normal');
+                const brandElement = item.querySelector('.a-size-base-plus.a-color-base');
                 const isAd = item.querySelector('.puis-label-popover-default') !== null;
-                const isRenewed = item.querySelector('[aria-label*="Renovado"]') !== null;
+                const isRenewed = item.querySelector('[aria-label*="Renewed"]') || item.querySelector('[aria-label*="Reacondicionado"]');
 
-                if (!titleElement || !priceElement || !linkElement || isAd || isRenewed) continue;
+                if (!titleElement || !linkElement || isAd || isRenewed) continue;
 
                 const title = titleElement.innerText.toLowerCase();
+                const brand = brandElement?.innerText.trim() || '';
                 let score = 0;
 
-                if (title.includes(queryLower)) {
-                    score += 10;
-                    if (title.startsWith(queryLower)) score += 5;
+                for (const term of queryTerms) {
+                    if (title.includes(term)) score += term.length > 3 ? 5 : 2;
                 }
 
-                const isRefurbishedInTitle = refurbishedKeywords.some(keyword => title.includes(keyword));
-                if (isRefurbishedInTitle) {
-                    score -= 20;
-                }
+                const exactMatch = queryTerms.every(term => title.includes(term));
+                if (exactMatch) score += 15;
+                if (!priceElement) score -= 3;
 
-                if (title.includes('nuevo') || title.includes('novo')) {
-                    score += 5;
-                }
+                if (refurbishedKeywords.some(keyword => title.includes(keyword))) continue;
 
                 if (score > bestScore) {
                     bestScore = score;
                     bestMatch = {
                         title: titleElement.innerText,
-                        price: priceElement.innerText,
-                        link: linkElement.href
+                        price: priceElement?.innerText || null,
+                        link: linkElement.href,
+                        brand
                     };
                 }
             }
@@ -64,12 +114,17 @@ const scrapeAmazonQuery = async (query) => {
         }, query, refurbishedKeywords);
 
         if (!productFromSearch) return [];
-
         await page.goto(productFromSearch.link, { waitUntil: 'networkidle2' });
 
-        const variations = [];
+        const poData = await extractPoData(page);
+        const brand = (poData.brand || productFromSearch.brand || '').trim() || productFromSearch.title.split(' ')[0];
+        const rawModel = poData.model_name || productFromSearch.title;
+        const model = cleanModel(rawModel);
+        const allowMatch = matchesModelInQuery(model.toLowerCase(), query.toLowerCase());
 
+        const variations = [];
         const colorOptions = await page.$$('[id^="color_name_"].image-swatch-button');
+
         if (colorOptions.length > 0) {
             for (let colorIndex = 0; colorIndex < colorOptions.length; colorIndex++) {
                 await delay(1000);
@@ -77,8 +132,10 @@ const scrapeAmazonQuery = async (query) => {
                 if (await colorElement.isVisible()) {
                     await colorElement.click();
                     await delay(3000);
-
-                    const color = normalizeColor(await safeEval(page, `#color_name_${colorIndex} img.swatch-image`, el => el.alt.trim(), ''));
+                    const rawColor = await safeEval(page, `#color_name_${colorIndex} img.swatch-image`, el => el.alt.trim(), '');
+                    const normalizedColor = normalizeColor(rawColor);
+                    const color = queryColor || normalizedColor;
+                    if (queryColor && color !== queryColor) continue;
 
                     const memoryOptions = await page.$$('[id^="size_name_"].text-swatch-button-with-slots');
                     for (let memoryIndex = 0; memoryIndex < memoryOptions.length; memoryIndex++) {
@@ -86,24 +143,16 @@ const scrapeAmazonQuery = async (query) => {
                         if (await memoryElement.isVisible()) {
                             await memoryElement.click();
                             await delay(3000);
-
-                            const memory = normalizeMemory(await safeEval(page, `#size_name_${memoryIndex} .swatch-title-text`, el => el.innerText.trim(), ''));
-                            let priceText = await safeEval(page, '.a-price .a-offscreen', el => el.innerText, '');
-                            if (!priceText) {
-                                priceText = await safeEval(page, '#apex_price .a-price', el => el.innerText, '');
-                            }
-                            let image = await safeEval(page, '#landingImage', el => el.src, '');
-                            if (!image) {
-                                image = await safeEval(page, '.a-dynamic-image', el => el.src, '');
-                            }
+                            const memory = normalizeMemory(await safeEval(page, `#size_name_${memoryIndex} .swatch-title-text`, el => el.innerText.trim(), '')) || normalizeMemory(poData.memory);
+                            const priceText = await safeEval(page, '.a-price .a-offscreen', el => el.innerText, '') || '';
+                            const image = await safeEval(page, '#landingImage', el => el.src, '') || await safeEval(page, '.a-dynamic-image', el => el.src, '');
+                            const price = parsePrice(priceText);
                             const currentUrl = page.url();
 
-                            const price = parsePrice(priceText, ',', '.');
-                            if (isNaN(price)) continue;
-
-                            const brand = productFromSearch.title.split(' ')[0];
-                            const title = normalizeTitle(brand, query, memory, color);
-                            variations.push({ title, price, image, memory, color, url: currentUrl });
+                            if (!isNaN(price)) {
+                                const title = removeTitleRepetitions(normalizeTitle(brand, rawModel, memory, color)).trim();
+                                variations.push({ title, price, image, memory, color, url: currentUrl, model });
+                            }
                         }
                     }
                 }
@@ -111,77 +160,60 @@ const scrapeAmazonQuery = async (query) => {
         }
 
         if (variations.length === 0) {
-            let priceText = await safeEval(page, '.a-price .a-offscreen', el => el.innerText, '');
-            if (!priceText) {
-                priceText = await safeEval(page, '#apex_price .a-price', el => el.innerText, '');
-            }
-            let image = await safeEval(page, '#landingImage', el => el.src, '');
-            if (!image) {
-                image = await safeEval(page, '.a-dynamic-image', el => el.src, '');
-            }
+            const priceText = await safeEval(page, '.a-price .a-offscreen', el => el.innerText, '') || '';
+            const image = await safeEval(page, '#landingImage', el => el.src, '') || await safeEval(page, '.a-dynamic-image', el => el.src, '') || '';
+            const price = parsePrice(priceText);
             const currentUrl = page.url();
+            const memory = normalizeMemory(poData.memory);
+            const color = queryColor || normalizeColor(poData.color);
+            const title = removeTitleRepetitions(normalizeTitle(brand, rawModel, memory, color)).trim();
 
-            const price = parsePrice(priceText, ',', '.');
-            const titleLower = productFromSearch.title.toLowerCase();
-            const memoryMatch = titleLower.match(/\b(\d{2,4}\s?gb|\d\s?tb)\b/i);
-            const memory = memoryMatch ? normalizeMemory(memoryMatch[0]) : null;
-
-            let color = null;
-            if (colorOptions.length === 0) {
-                color = normalizeColor(await safeEval(page, 'tr.po-color td.a-span9 span', el => el.innerText.trim(), ''));
-                if (!color) {
-                    const colorMatch = titleLower.match(/(white|black|blue|pink|green|yellow|starlight|midnight|multicolor)/i);
-                    color = colorMatch ? normalizeColor(colorMatch[0]) : null;
-                }
-            }
-
-            const brand = productFromSearch.title.split(' ')[0];
-            const title = normalizeTitle(brand, query, memory || '', color || '');
-
-            if (!isNaN(price)) {
-                variations.push({ title, price, image, memory, color, url: currentUrl });
+            if (!isNaN(price) && !refurbishedKeywords.some(k => title.toLowerCase().includes(k)) && currentUrl !== 'https://www.amazon.es/s' && allowMatch) {
+                variations.push({ title, price, image, memory, color, url: currentUrl, model });
             }
         }
 
-        const uniqueVariations = dedupeVariations(variations, v => `${v.title}-${v.memory}-${v.color}`);
+        const uniqueVariations = dedupeVariations(variations, v => `${v.title}-${v.memory || ''}-${v.color || ''}`);
 
-        const results = [];
+        const validVariations = uniqueVariations.filter(v => {
+            if (!v.title || typeof v.title !== 'string') {
+                console.warn('[SCRAPER] Variação rejeitada por título inválido:', v);
+                return false;
+            }
+            return true;
+        });
 
-        for (const variation of uniqueVariations) {
-            const brand = variation.title.split(' ')[0];
-            const model = query;
-            const priceValue = variation.price;
-
-            if (!brand || !model || !priceValue || priceValue <= 0) continue;
-
-            const productData = {
-                brand,
-                model,
+        const results = validVariations.map(variation => {
+            return {
+                brand: brand.trim(),
+                model: (variation.model || cleanModel(variation.title)).trim(),
                 memory: variation.memory,
                 color: variation.color,
-                name: variation.title,
+                name: variation.title.trim(),
                 category: null,
                 currency: 'EUR',
                 imageUrl: variation.image,
-                offers: [{
-                    source: 'Amazon',
-                    url: variation.url,
-                    prices: [{
-                        value: priceValue,
-                        date: new Date()
-                    }],
-                    lastUpdated: new Date()
-                }],
+                offers: [
+                    {
+                        source: 'Amazon',
+                        url: normalizeUrl(variation.url),
+                        prices: [
+                            {
+                                value: variation.price,
+                                date: new Date()
+                            }
+                        ],
+                        lastUpdated: new Date()
+                    }
+                ],
                 createdAt: new Date(),
                 updatedAt: new Date()
             };
-
-            results.push(productData);
-        }
+        });
 
         return results;
-
     } catch (error) {
+        console.error(`[SCRAPER] Erro: ${error.message}`);
         return [];
     } finally {
         await page.close();

@@ -33,11 +33,20 @@ const acceptCookies = async (page, selector, timeout = 5000) => {
     } catch (e) {}
 };
 
-const parsePrice = (priceText, decimalSeparator = '.', thousandSeparator = ',') => {
+const parsePrice = (priceText) => {
     if (!priceText) return NaN;
     const cleaned = priceText.replace(/[^\d,.]/g, '');
-    const normalized = cleaned.replace(thousandSeparator, '').replace(decimalSeparator, '.');
-    return parseFloat(normalized);
+    const parts = cleaned.split(/[,.]/);
+    let normalized;
+    if (parts.length >= 2) {
+        const last = parts.pop();
+        const secondLast = parts.pop();
+        normalized = `${parts.join('') || '0'}${secondLast}.${last}`;
+    } else {
+        normalized = cleaned.replace(',', '.');
+    }
+    const result = parseFloat(normalized);
+    return isNaN(result) ? NaN : Math.round(result * 100) / 100;
 };
 
 const safeEval = async (page, selector, callback, defaultValue = null) => {
