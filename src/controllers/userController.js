@@ -3,18 +3,17 @@ const User = require('../models/Users');
 const axios = require('axios');
 const multer = require('multer');
 const FormData = require('form-data');
+const jwt = require('jsonwebtoken');
 
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 
 const registerUser = async (req, res) => {
+    const { name, email, password, birthDate, gender } = req.body;
 
-    const { name, email, password} = req.body;
-
-    try{
-        let user = await User.findOne({email});
-        
-        if(user) return res.status(400).json({ msg: 'Email já registado' });
+    try {
+        let user = await User.findOne({ email });
+        if (user) return res.status(400).json({ msg: 'Email já registado' });
 
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
@@ -22,43 +21,59 @@ const registerUser = async (req, res) => {
         user = new User({
             name,
             email,
-            password: hashedPassword
+            password: hashedPassword,
+            birthDate: birthDate ? new Date(birthDate) : undefined,
+            gender
         });
 
         await user.save();
-        res.status(201).json({ 
-            msg: 'Utilizador registado com sucesso.', 
-            user: { id: user._id, name, email, plan: user.plan } 
-          });
-    }catch (error) {
+        res.status(201).json({
+            msg: 'Utilizador registado com sucesso.',
+            user: {
+                id: user._id,
+                name,
+                email,
+                plan: user.plan
+            }
+        });
+    } catch (error) {
         res.status(500).json({ msg: 'Erro no servidor ao criar o utilizador.', error: error.message });
     }
 };
 
 const updateUser = async (req, res) => {
-    const { name, email, password } = req.body;
+    const { name, email, password, birthDate, gender } = req.body;
     const userId = req.params.id;
-  
+
     try {
-      let user = await User.findById(userId);
-      if (!user) return res.status(404).json({ msg: 'Utilizador não encontrado' });
-  
-      if (name) user.name = name;
-      if (email) user.email = email;
-      if (password) {
-        const salt = await bcrypt.genSalt(10);
-        user.password = await bcrypt.hash(password, salt);
-      }
-  
-      await user.save();
-      res.json({ 
-        msg: 'Utilizador atualizado', 
-        user: { id: user._id, name: user.name, email: user.email, plan: user.plan } 
-      });
+        let user = await User.findById(userId);
+        if (!user) return res.status(404).json({ msg: 'Utilizador não encontrado' });
+
+        if (name) user.name = name;
+        if (email) user.email = email;
+        if (birthDate) user.birthDate = new Date(birthDate);
+        if (gender) user.gender = gender;
+        if (password) {
+            const salt = await bcrypt.genSalt(10);
+            user.password = await bcrypt.hash(password, salt);
+        }
+
+        await user.save();
+        res.json({
+            msg: 'Utilizador atualizado',
+            user: {
+                id: user._id,
+                name: user.name,
+                email: user.email,
+                plan: user.plan,
+                birthDate: user.birthDate,
+                gender: user.gender
+            }
+        });
     } catch (error) {
-      res.status(500).json({ msg: 'Erro no servidor', error: error.message });
+        res.status(500).json({ msg: 'Erro no servidor', error: error.message });
     }
-  };
+};
 
 const deleteUser = async (req, res) => {
     const userId = req.params.id;
@@ -184,9 +199,19 @@ const updateProfilePicture = async (req, res) => {
     user.profilePictureKey = imageKey;
     await user.save();
 
+    const tokenPayload = {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      profilePicture: user.profilePicture, 
+      plan: user.plan, 
+    };
+    const newToken = jwt.sign(tokenPayload, process.env.JWT_SECRET, { expiresIn: '1h' });
+
     res.status(200).json({
       message: 'Foto de perfil atualizada com sucesso',
       user: { id: user._id, name: user.name, email: user.email, profilePicture: user.profilePicture },
+      token: newToken,
     });
   } catch (error) {
     console.error('Erro ao atualizar foto de perfil:', error.message);
@@ -201,6 +226,6 @@ module.exports= {
     changePassword,
     updateUserPlan,
     registerToken,
-    updateProfilePicture, 
+    updateProfilePicture,
     upload
 };

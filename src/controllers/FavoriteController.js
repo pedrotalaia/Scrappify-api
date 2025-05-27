@@ -76,7 +76,7 @@ const listFavorites = async (req, res) => {
 
     try {
         const favorites = await Favorite.find({ userId, isActive: true })
-            .populate('productId', 'brand model memory color name offers');
+            .populate('productId');
 
         if (!favorites || favorites.length === 0) {
             return res.status(200).json({ msg: 'Nenhum favorito encontrado', favorites: [] });

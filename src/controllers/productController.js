@@ -34,19 +34,21 @@ const saveProduct = async (productData) => {
         product.updatedAt = Date.now();
     } else {
         product = new Product({
-            brand,
-            model,
-            memory,
-            color,
-            name,
-            offers: [newOffer],
-            category,
-            currency: currency || 'EUR',
-            imageUrl
-        });
+        brand,
+        model,
+        memory,
+        color,
+        name,
+        offers: [newOffer],
+        category,
+        currency: currency || 'EUR',
+        imageUrl,
+        parentId: productData.parentId || undefined,
+        viewsByDate: []
+    });
     }
 
-    await product.save();
+    //await product.save();
     await checkAndTriggerAlerts(product._id, price);
     return product;
 };
@@ -161,6 +163,12 @@ const searchProduct = async (req, res) => {
 
 const ProductInfo = async (req, res) => {
     const productId = req.params.id;
+    const userId = req.user.id;
+    const deviceId = req.headers['x-device-id'];
+
+    if (!userId || !deviceId) {
+        return res.status(400).json({ msg: 'User ID e Device ID são obrigatórios' });
+    }
 
     try {
         const product = await Product.findById(productId);
@@ -168,11 +176,38 @@ const ProductInfo = async (req, res) => {
             return res.status(404).json({ msg: 'Produto não encontrado' });
         }
 
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        if (!Array.isArray(product.viewsByDate)) {
+            product.viewsByDate = [];
+        }
+
+        const existingView = product.viewsByDate.find(view =>
+            new Date(view.date).getTime() === today.getTime() &&
+            String(view.userId) === String(userId) &&
+            String(view.deviceId) === String(deviceId)
+        );
+
+        if (existingView) {
+            existingView.count += 1;
+        } else {
+            product.viewsByDate.push({
+                date: today,
+                userId,
+                deviceId,
+                count: 1
+            });
+        }
+
+        await product.save();
+
         return res.json({ product });
     } catch (err) {
         return res.status(500).json({ msg: 'Erro ao obter informação do produto', error: err.message });
     }
 };
+
 
 const getProductsWithoutCategory = async (req, res) => {
     try {
@@ -200,7 +235,7 @@ const assignCategoryToProducts = async (req, res) => {
         return res.status(400).json({ msg: 'IDs dos produtos e categoria são obrigatórios' });
     }
 
-    try {co
+    try {
         const result = await Product.updateMany(
             { _id: { $in: productIds } },
             { $set: { category, updatedAt: Date.now() } }
@@ -208,6 +243,65 @@ const assignCategoryToProducts = async (req, res) => {
         res.json({ msg: 'Categoria atribuída com sucesso', modifiedCount: result.modifiedCount });
     } catch (err) {
         res.status(500).json({ msg: 'Erro ao atualizar os produtos', error: err.message });
+    }
+};
+
+const getTrendingProducts = async (req, res) => {
+    try {
+        const products = await Product.find();
+
+        const now = new Date();
+        const trending = products.map(p => {
+            let views3 = 0, views7 = 0, total = 0;
+
+            for (let [dateStr, count] of p.viewsByDate.entries()) {
+                total += count;
+                const daysAgo = Math.floor((now - new Date(dateStr)) / (1000 * 60 * 60 * 24));
+                if (daysAgo < 3) views3 += count;
+                if (daysAgo < 7) views7 += count;
+            }
+
+            const score = views3 * 0.6 + views7 * 0.3 + total * 0.1;
+            return { product: p, score };
+        });
+
+        const top = trending
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 3)
+            .map(t => t.product);
+
+        return res.json({ msg: 'Trending products', products: top });
+
+    } catch (err) {
+        return res.status(500).json({ msg: 'Erro ao obter produtos em tendência', error: err.message });
+    }
+};
+
+const getChildrenProducts = async (req, res) => {
+    const parentId = req.params.id;
+
+    try {
+        const children = await Product.find({ parentId });
+        res.json({ parentId, count: children.length, products: children });
+    } catch (err) {
+        res.status(500).json({ msg: 'Erro ao obter produtos filhos', error: err.message });
+    }
+};
+
+const updateParentId = async (req, res) => {
+    const { id } = req.params;
+    const { parentId } = req.body;
+
+    try {
+        const product = await Product.findById(id);
+        if (!product) return res.status(404).json({ msg: 'Produto não encontrado' });
+
+        product.parentId = parentId || null;
+        await product.save();
+
+        res.json({ msg: 'Parent ID atualizado com sucesso', product });
+    } catch (err) {
+        res.status(500).json({ msg: 'Erro ao atualizar o parentId', error: err.message });
     }
 };
 
@@ -220,5 +314,8 @@ module.exports = {
     ProductInfo,
     getProductsWithoutCategory,
     getProductsByCategory,
-    assignCategoryToProducts
+    assignCategoryToProducts,
+    getTrendingProducts,
+    getChildrenProducts,
+    updateParentId
 };
