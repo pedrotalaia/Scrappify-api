@@ -10,7 +10,8 @@ const {
     assignCategoryToProducts,
     getTrendingProducts,
     getChildrenProducts,
-    updateParentId
+    updateParentId,
+    getCategoryByAgeGroup
 } = require('../controllers/productController');
 
 const { getPriceAnalysis } = require('../controllers/AnalysisController');
@@ -29,6 +30,8 @@ router.get('/trending', getTrendingProducts);
 router.get('/list-no-category', getProductsWithoutCategory);
 router.get('/category/:category', getProductsByCategory);
 router.post('/assign-category', assignCategoryToProducts);
+
+router.get('/category-by-age', getCategoryByAgeGroup);
 
 router.get('/:id', ProductInfo);
 router.get('/:id/analysis', getPriceAnalysis);
