@@ -305,6 +305,68 @@ const updateParentId = async (req, res) => {
     }
 };
 
+const calculateAge = (birthDate) => {
+    const today = new Date();
+    const dob = new Date(birthDate);
+    let age = today.getFullYear() - dob.getFullYear();
+    const m = today.getMonth() - dob.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
+    return age;
+};
+
+const getAgeGroup = (age) => {
+    if (age < 18) return '<18';
+    if (age < 25) return '18-24';
+    if (age < 35) return '25-34';
+    if (age < 45) return '35-44';
+    if (age < 55) return '45-54';
+    if (age < 65) return '55-64';
+    return '65+';
+};
+
+const Product = require('../models/Product');
+const User = require('../models/Users');
+
+const getCategoryByAgeGroup = async (req, res) => {
+    try {
+        const products = await Product.find({}).lean();
+        const users = await User.find({}, { _id: 1, birthDate }).lean();
+
+        const userAgeGroups = new Map();
+        for (const user of users) {
+            if (user.birthDate) {
+                const age = calculateAge(user.birthDate);
+                userAgeGroups.set(String(user._id), getAgeGroup(age));
+            }
+        }
+
+        const stats = {};
+
+        for (const product of products) {
+            const category = product.category || 'Uncategorized';
+            for (const view of product.viewsByDate || []) {
+                const ageGroup = userAgeGroups.get(String(view.userId));
+                if (!ageGroup) continue;
+
+                if (!stats[ageGroup]) stats[ageGroup] = {};
+                if (!stats[ageGroup][category]) stats[ageGroup][category] = 0;
+                stats[ageGroup][category] += view.count;
+            }
+        }
+
+        const result = {};
+        for (const [ageGroup, categoryCounts] of Object.entries(stats)) {
+            const topCategory = Object.entries(categoryCounts).sort((a, b) => b[1] - a[1])[0];
+            result[ageGroup] = { category: topCategory[0], views: topCategory[1] };
+        }
+
+        res.json({ result });
+    } catch (err) {
+        res.status(500).json({ msg: 'Failed to compute statistics', error: err.message });
+    }
+};
+
+
 module.exports = {
     saveOrUpdateProduct,
     deleteProduct,
@@ -317,5 +379,6 @@ module.exports = {
     assignCategoryToProducts,
     getTrendingProducts,
     getChildrenProducts,
-    updateParentId
+    updateParentId,
+    getCategoryByAgeGroup
 };
