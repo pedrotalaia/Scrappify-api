@@ -33,7 +33,7 @@ router.post('/assign-category', assignCategoryToProducts);
 
 router.get('/category-by-age', getCategoryByAgeGroup);
 
-router.get('/:id', ProductInfo);
+router.get('/:id', auth, ProductInfo);
 router.get('/:id/analysis', getPriceAnalysis);
 
 module.exports = router;

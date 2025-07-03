@@ -49,7 +49,7 @@ const saveProduct = async (productData) => {
     });
     }
 
-    //await product.save();
+    await product.save();
     await checkAndTriggerAlerts(product._id, price);
     return product;
 };
