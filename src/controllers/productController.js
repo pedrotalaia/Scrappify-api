@@ -1,4 +1,5 @@
 const Product = require('../models/Product');
+const User = require('../models/Users');
 const { checkAndTriggerAlerts } = require('./alertController');
 const { normalizeUrl, extractColorFromQuery } = require('../scrapper/normalize');
 const { scrapeProductPriceByQuery } = require('../scrapper/index');
@@ -323,9 +324,6 @@ const getAgeGroup = (age) => {
     if (age < 65) return '55-64';
     return '65+';
 };
-
-const Product = require('../models/Product');
-const User = require('../models/Users');
 
 const getCategoryByAgeGroup = async (req, res) => {
     try {

@@ -4,7 +4,6 @@ puppeteer.use(StealthPlugin());
 const { scrapeAmazonQuery } = require('./amazon');
 const { scrapeWortenQuery } = require('./worten');
 const { scrapeFnacQuery } = require('./fnac');
-const { scrapeAliExpressQuery } = require('./aliexpress');
 const { scrapeMediaMarktQuery } = require('./mediamarket');
 const { normalizeUrl } = require('./normalize');
 
