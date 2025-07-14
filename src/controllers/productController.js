@@ -165,11 +165,7 @@ const searchProduct = async (req, res) => {
 const ProductInfo = async (req, res) => {
     const productId = req.params.id;
     const userId = req.user.id;
-    const deviceId = req.headers['x-device-id'];
-
-    if (!userId || !deviceId) {
-        return res.status(400).json({ msg: 'User ID e Device ID são obrigatórios' });
-    }
+    const deviceId = req.headers['x-device-id'] || null;
 
     try {
         const product = await Product.findById(productId);
@@ -184,11 +180,12 @@ const ProductInfo = async (req, res) => {
             product.viewsByDate = [];
         }
 
-        const existingView = product.viewsByDate.find(view =>
-            new Date(view.date).getTime() === today.getTime() &&
-            String(view.userId) === String(userId) &&
-            String(view.deviceId) === String(deviceId)
-        );
+        const existingView = product.viewsByDate.find(view => {
+            const viewDate = view.date ? new Date(view.date).getTime() : null;
+            return viewDate === today.getTime() &&
+                   String(view.userId) === String(userId) &&
+                   (deviceId ? String(view.deviceId) === String(deviceId) : true);
+        });
 
         if (existingView) {
             existingView.count += 1;
@@ -208,7 +205,6 @@ const ProductInfo = async (req, res) => {
         return res.status(500).json({ msg: 'Erro ao obter informação do produto', error: err.message });
     }
 };
-
 
 const getProductsWithoutCategory = async (req, res) => {
     try {
