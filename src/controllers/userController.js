@@ -137,24 +137,28 @@ const updateUserPlan = async (req, res) => {
 
 const registerToken = async (req, res) => {
   const userId = req.user.id;
-  const { token, platform, device_id } = req.body
+  const { token, platform, device_id } = req.body;
 
-  try{
+  try {
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ msg: 'Utilizador não encontrado' });
 
-    const existingToken = user.device_tokens.find(dt => dt.token === token)
-    if(!existingToken){
-        user.device_tokens.push({userId, token, platform, device_id })
-    }else{
-      existingToken.last_updated = Date.now();
+    const existingDevice = user.device_tokens.find(dt => dt.device_id === device_id);
+
+    if (existingDevice) {
+      existingDevice.token = token;
+      existingDevice.platform = platform;
+      existingDevice.last_updated = Date.now();
+    } else {
+      user.device_tokens.push({ userId, token, platform, device_id });
     }
-    
+
     await user.save();
     res.status(200).json({ message: 'Token registado com sucesso' });
-    } catch (error) {
-      res.status(500).json({ error: 'Erro ao registar o token', details: error.message });
-    }
+
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao registar o token', details: error.message });
+  }
 };
 
 const updateProfilePicture = async (req, res) => {
