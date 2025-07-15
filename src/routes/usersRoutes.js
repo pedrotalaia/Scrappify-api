@@ -11,6 +11,6 @@ router.put('/plan', auth, updateUserPlan);
 router.put('/:id', updateUser);
 router.delete('/:id', deleteUser);
 
-router.post('/register-token', auth, registerToken)
+router.post('/register-token', auth, registerToken);
 
 module.exports = router;

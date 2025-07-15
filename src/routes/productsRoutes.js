@@ -1,6 +1,5 @@
 const express = require('express');
 const {
-    saveOrUpdateProduct,
     deleteProduct,
     countTotalProducts,
     searchProduct,
@@ -11,7 +10,8 @@ const {
     getTrendingProducts,
     getChildrenProducts,
     updateParentId,
-    getCategoryByAgeGroup
+    getCategoryByAgeGroup,
+    saveProduct
 } = require('../controllers/productController');
 
 const { getPriceAnalysis } = require('../controllers/AnalysisController');
@@ -19,7 +19,7 @@ const auth = require('../middleware/auth');
 
 const router = express.Router();
 
-router.post('/save', saveOrUpdateProduct);
+router.post('/save', saveProduct);
 router.patch('/:id/parent', updateParentId);
 router.get('/:id/children', getChildrenProducts);
 router.delete('/:id', deleteProduct);

@@ -98,21 +98,23 @@ const checkAndTriggerAlerts = async (productId, newPrice) => {
                     await notification.save();
 
                     const user = await User.findById(userId);
-                    if(user && user.device_tokens.length > 0){
-                    const tokens = user.device_tokens.map(dt => dt.token);
+                    if (user && user.device_tokens.length > 0) {
+                        const tokens = user.device_tokens.map(dt => dt.token);
 
-                    try {
-                        await messaging.sendMulticast({
-                            tokens,
-                            notification: {
-                                title: 'Atualização de Produto',
-                                body: message,
+                        for (const token of tokens) {
+                            try {
+                                await messaging.send({
+                                    token: token,
+                                    notification: {
+                                        title: 'Atualização de Produto',
+                                        body: message,
+                                    }
+                                });
+                            } catch (fcmError) {
+                                console.error('Erro ao enviar notificação push:', fcmError.message);
                             }
-                        });
-                    } catch (fcmError) {
-                        console.error('Erro ao enviar notificação push:', fcmError.message);
+                        }
                     }
-                }
                 }
             }
         }
